@@ -40,6 +40,7 @@ export class ScannerInstaller {
 
   /**
    * Installs the scanner package using pip into the specified Python interpreter.
+   * Priority: Local Workspace -> PyPI -> Direct GitHub Repository.
    */
   public async installScanner(pythonPath: string): Promise<boolean> {
     return await vscode.window.withProgress(
@@ -51,24 +52,44 @@ export class ScannerInstaller {
       async (progress) => {
         progress.report({ message: 'Running pip install in active environment...' });
 
-        // Determine if local monorepo source exists (parent directory)
+        // 1. Check if local development workspace contains pyproject.toml
         const workspaceFolders = vscode.workspace.workspaceFolders;
-        let installCommand = `"${pythonPath}" -m pip install llm-model-security-scanner`;
-
         if (workspaceFolders && workspaceFolders.length > 0) {
           const rootPath = workspaceFolders[0].uri.fsPath;
           const pyprojectPath = path.join(rootPath, 'pyproject.toml');
           const parentPyproject = path.join(rootPath, '..', 'pyproject.toml');
 
-          if (fs.existsSync(pyprojectPath)) {
-            installCommand = `"${pythonPath}" -m pip install -e "${rootPath}"`;
-          } else if (fs.existsSync(parentPyproject)) {
-            installCommand = `"${pythonPath}" -m pip install -e "${path.join(rootPath, '..')}"`;
+          try {
+            if (fs.existsSync(pyprojectPath)) {
+              await execAsync(`"${pythonPath}" -m pip install -e "${rootPath}"`);
+              vscode.window.showInformationMessage(
+                'LLM Model Security Scanner installed from local workspace! 🛡️'
+              );
+              return true;
+            } else if (fs.existsSync(parentPyproject)) {
+              await execAsync(`"${pythonPath}" -m pip install -e "${path.join(rootPath, '..')}"`);
+              vscode.window.showInformationMessage(
+                'LLM Model Security Scanner installed from local workspace! 🛡️'
+              );
+              return true;
+            }
+          } catch (e) {
+            console.warn('Local editable pip install failed, falling back to remote...', e);
           }
         }
 
+        // 2. Try PyPI package first; fallback to GitHub repository directly
         try {
-          await execAsync(installCommand);
+          try {
+            await execAsync(`"${pythonPath}" -m pip install llm-model-security-scanner`);
+          } catch {
+            // Fallback to official GitHub repository
+            progress.report({ message: 'Installing from GitHub repository...' });
+            await execAsync(
+              `"${pythonPath}" -m pip install "git+https://github.com/mesutgungor/llm-model-security-scanner.git"`
+            );
+          }
+
           vscode.window.showInformationMessage(
             'LLM Model Security Scanner successfully installed and activated! 🛡️'
           );
