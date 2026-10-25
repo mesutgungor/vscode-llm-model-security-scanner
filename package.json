@@ -1,0 +1,204 @@
+{
+  "name": "llm-model-security-scanner",
+  "displayName": "LLM Model Security Scanner",
+  "description": "Enterprise-grade static security scanner & verification engine for open-source LLMs (Hugging Face, SafeTensors, GGUF, PyTorch, LoRA, ONNX).",
+  "version": "1.0.0",
+  "publisher": "mg-ai",
+  "author": {
+    "name": "Mesut Güngör",
+    "url": "https://github.com/mesutgungor"
+  },
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mesutgungor/vscode-llm-model-security-scanner"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Linters",
+    "Programming Languages",
+    "Security",
+    "Machine Learning"
+  ],
+  "keywords": [
+    "llm",
+    "security",
+    "ai-security",
+    "huggingface",
+    "safetensors",
+    "gguf",
+    "pytorch",
+    "lora",
+    "owasp",
+    "mitre-atlas",
+    "eu-ai-act",
+    "sarif"
+  ],
+  "icon": "media/shield.png",
+  "activationEvents": [
+    "onLanguage:json",
+    "onLanguage:python",
+    "workspaceContains:**/config.json",
+    "workspaceContains:**/tokenizer.json",
+    "workspaceContains:**/*.safetensors",
+    "workspaceContains:**/*.gguf",
+    "onCommand:llmSecurity.scanWorkspace",
+    "onCommand:llmSecurity.scanRemoteHub",
+    "onCommand:llmSecurity.verifyFindings"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "llmSecurity.scanWorkspace",
+        "title": "LLM Security: Scan Workspace Models",
+        "icon": "$(shield)"
+      },
+      {
+        "command": "llmSecurity.scanFile",
+        "title": "LLM Security: Scan Selected Model / File",
+        "icon": "$(file-binary)"
+      },
+      {
+        "command": "llmSecurity.scanRemoteHub",
+        "title": "LLM Security: Audit Remote Hugging Face Repository...",
+        "icon": "$(cloud-download)"
+      },
+      {
+        "command": "llmSecurity.verifyFindings",
+        "title": "LLM Security: Verify Findings (Proof Engine)",
+        "icon": "$(verified)"
+      },
+      {
+        "command": "llmSecurity.showProofDossier",
+        "title": "LLM Security: View Proof Dossier Webview",
+        "icon": "$(preview)"
+      },
+      {
+        "command": "llmSecurity.showCompliance",
+        "title": "LLM Security: Show Regulatory Framework Crosswalk",
+        "icon": "$(law)"
+      },
+      {
+        "command": "llmSecurity.installScanner",
+        "title": "LLM Security: Install / Upgrade Scanner in Active Environment",
+        "icon": "$(tools)"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "llm-security-explorer",
+          "title": "LLM Model Security",
+          "icon": "media/shield.svg"
+        }
+      ]
+    },
+    "views": {
+      "llm-security-explorer": [
+        {
+          "id": "llmSecurityFindingsView",
+          "name": "Security Findings & Verification"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "LLM Model Security Scanner",
+      "properties": {
+        "llmSecurity.triggerMode": {
+          "type": "string",
+          "enum": [
+            "smart",
+            "onSave",
+            "onOpen",
+            "manual"
+          ],
+          "default": "smart",
+          "description": "Trigger strategy: 'smart' (manifests on save, weights manual), 'onSave' (all on save), 'onOpen', or 'manual'."
+        },
+        "llmSecurity.profile": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "consumer",
+            "creator"
+          ],
+          "default": "auto",
+          "description": "Scanning focus: 'consumer' (RCE/SSTI/tokens), 'creator' (LoRA/weights/secrets), or 'auto'."
+        },
+        "llmSecurity.maxSeverityGate": {
+          "type": "string",
+          "enum": [
+            "LOW",
+            "MEDIUM",
+            "HIGH",
+            "CRITICAL"
+          ],
+          "default": "HIGH",
+          "description": "Threshold that triggers high-visibility warnings and status bar alerts."
+        },
+        "llmSecurity.deepWeightSampling": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable numerical tensor sampling for NaN/Inf/sabotaged layers on multi-gigabyte files."
+        },
+        "llmSecurity.pythonPath": {
+          "type": "string",
+          "default": "",
+          "description": "Custom path to python interpreter with llm-scan installed. Leave empty for auto-detection."
+        }
+      }
+    },
+    "menus": {
+      "explorer/context": [
+        {
+          "command": "llmSecurity.scanFile",
+          "group": "llmSecurity@1",
+          "when": "resourceExtname =~ /\\.(bin|pt|safetensors|gguf|onnx|json|py)$/"
+        },
+        {
+          "command": "llmSecurity.verifyFindings",
+          "group": "llmSecurity@2"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "llmSecurity.scanFile",
+          "group": "llmSecurity@1",
+          "when": "resourceExtname =~ /\\.(json|py)$/"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "llmSecurity.scanWorkspace",
+          "when": "view == llmSecurityFindingsView",
+          "group": "navigation@1"
+        },
+        {
+          "command": "llmSecurity.scanRemoteHub",
+          "when": "view == llmSecurityFindingsView",
+          "group": "navigation@2"
+        },
+        {
+          "command": "llmSecurity.verifyFindings",
+          "when": "view == llmSecurityFindingsView",
+          "group": "navigation@3"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "package": "vsce package"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^2.22.0",
+    "typescript": "^5.3.3"
+  }
+}
