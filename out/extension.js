@@ -12,6 +12,8 @@ const findingsTreeView_1 = require("./findingsTreeView");
 const statusBar_1 = require("./statusBar");
 const webviewProofDossier_1 = require("./webviewProofDossier");
 const codeActionProvider_1 = require("./codeActionProvider");
+const remoteModelDetector_1 = require("./remoteModelDetector");
+const codeLensProvider_1 = require("./codeLensProvider");
 let lastScannedSummary;
 async function activate(context) {
     // 1. Initialize Core Services
@@ -21,8 +23,31 @@ async function activate(context) {
     const diagnostics = new diagnosticsProvider_1.DiagnosticsProvider();
     const treeProvider = new findingsTreeView_1.FindingsTreeProvider();
     const statusBar = new statusBar_1.StatusBarManager();
+    const remoteDetector = new remoteModelDetector_1.RemoteModelDetector();
+    const codeLensProvider = new codeLensProvider_1.RemoteModelCodeLensProvider(remoteDetector);
     // Register TreeView in Activity Bar
     vscode.window.registerTreeDataProvider('llmSecurityFindingsView', treeProvider);
+    // Register CodeLens Provider for Python models
+    const codeLensDisposable = vscode.languages.registerCodeLensProvider({ scheme: 'file', language: 'python' }, codeLensProvider);
+    // Helper: Synchronize remote model diagnostics on document
+    function syncRemoteDiagnostics(document) {
+        if (document.languageId !== 'python' || document.uri.scheme !== 'file') {
+            return;
+        }
+        const detected = remoteDetector.detectModels(document);
+        const items = [];
+        for (const item of detected) {
+            const cached = remoteDetector.getCached(item.modelId);
+            if (cached) {
+                items.push({
+                    modelId: item.modelId,
+                    range: item.range,
+                    summary: cached,
+                });
+            }
+        }
+        diagnostics.setRemoteModelDiagnostics(document.uri, items);
+    }
     // 2. Register Commands
     // Command: Scan Workspace
     const scanWorkspaceCmd = vscode.commands.registerCommand('llmSecurity.scanWorkspace', async () => {
@@ -116,7 +141,57 @@ async function activate(context) {
             }
         });
     });
-    // Command: Verify Findings with Proof Engine
+    // Command: Audit Remote Model Inline (from CodeLens or auto-audit)
+    const auditRemoteInlineCmd = vscode.commands.registerCommand('llmSecurity.auditRemoteInline', async (modelId, documentUri) => {
+        if (!modelId) {
+            return;
+        }
+        const isReady = await installer.ensureInstalled();
+        if (!isReady) {
+            return;
+        }
+        codeLensProvider.refresh();
+        try {
+            const summary = await remoteDetector.auditModel(modelId, bridge);
+            codeLensProvider.refresh();
+            const editor = vscode.window.activeTextEditor;
+            const uri = documentUri || editor?.document.uri;
+            if (uri && editor && editor.document.uri.toString() === uri.toString()) {
+                syncRemoteDiagnostics(editor.document);
+            }
+            if (summary.findings.length > 0) {
+                treeProvider.setSummary(summary);
+            }
+            notifyScanVerdict(summary);
+        }
+        catch (err) {
+            vscode.window.showErrorMessage(`Remote audit for '${modelId}' failed: ${err?.message || err}`);
+        }
+    });
+    // Command: Verify Specific Model with Proof Engine (opens webview)
+    const verifySpecificModelCmd = vscode.commands.registerCommand('llmSecurity.verifySpecificModel', async (modelId) => {
+        if (!modelId) {
+            return;
+        }
+        const isReady = await installer.ensureInstalled();
+        if (!isReady) {
+            return;
+        }
+        await vscode.window.withProgress({
+            location: vscode.ProgressLocation.Notification,
+            title: `Generating Cryptographic Proof Dossier for: ${modelId}...`,
+            cancellable: false,
+        }, async () => {
+            try {
+                const htmlContent = await bridge.verifyTarget(modelId, true);
+                webviewProofDossier_1.ProofDossierWebview.createOrShow(context.extensionUri, modelId, htmlContent);
+            }
+            catch (err) {
+                vscode.window.showErrorMessage(`Verification failed for '${modelId}': ${err?.message || err}`);
+            }
+        });
+    });
+    // Command: Verify Findings with Proof Engine (active target)
     const verifyFindingsCmd = vscode.commands.registerCommand('llmSecurity.verifyFindings', async () => {
         const target = lastScannedSummary?.target ||
             vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
@@ -145,17 +220,6 @@ async function activate(context) {
     });
     // Command: Show Compliance Crosswalk
     const showComplianceCmd = vscode.commands.registerCommand('llmSecurity.showCompliance', () => {
-        const md = new vscode.MarkdownString();
-        md.appendMarkdown('## 🏛️ Security Framework Crosswalk Matrix\n\n');
-        md.appendMarkdown('Every rule in **llm-scan** is mapped to the four principal AI safety frameworks:\n\n');
-        md.appendMarkdown('| Rule Category | OWASP Top 10 for LLMs | MITRE ATLAS | NIST AI RMF | EU AI Act (2024/1689) |\n');
-        md.appendMarkdown('| :--- | :--- | :--- | :--- | :--- |\n');
-        md.appendMarkdown('| **Pickle / ZipSlip RCE** | LLM03: Supply Chain | AML.T0010: Supply Chain | MANAGE-2.4 (Vetting) | Art. 15 / 55 (Systemic) |\n');
-        md.appendMarkdown('| **Jinja2 Chat SSTI** | LLM03 / LLM01 | AML.T0048: Code Execution | MEASURE-2.6 (Testing) | Art. 15 (Cybersecurity) |\n');
-        md.appendMarkdown('| **SafeTensors / GGUF DoS** | LLM10: Consumption | AML.T0029: Denial of Service | MEASURE-2.6 (Testing) | Art. 15 (Robustness) |\n');
-        md.appendMarkdown('| **Special Token Hijack** | LLM01: Prompt Injection | AML.T0051: LLM Injection | MEASURE-2.6 (Testing) | Art. 15 (Cybersecurity) |\n');
-        md.appendMarkdown('| **Weight Poisoning (NaN/Inf)** | LLM04: Poisoning | AML.T0029: Denial of Service | MEASURE-2.6 (Testing) | Art. 15 / 55 (Systemic) |\n');
-        md.appendMarkdown('| **Secret / Key Leaks** | LLM02: Data Leak | AML.T0040: IP Theft | GOVERN-1.2 & MANAGE | Art. 15 & 53 (Protection) |\n');
         vscode.window.showInformationMessage('Framework Crosswalk: OWASP LLM01–10 • MITRE ATLAS • NIST AI RMF • EU AI Act Art. 15/53/55', 'Learn More').then((choice) => {
             if (choice === 'Learn More') {
                 vscode.env.openExternal(vscode.Uri.parse('https://github.com/mesutgungor/llm-model-security-scanner#-regulatory--security-framework-crosswalk'));
@@ -187,7 +251,7 @@ async function activate(context) {
     ], new codeActionProvider_1.SecurityCodeActionProvider(), {
         providedCodeActionKinds: codeActionProvider_1.SecurityCodeActionProvider.providedCodeActionKinds,
     });
-    // 3. Real-Time As-You-Write Linter & Scanner Engine
+    // 3. Real-Time As-You-Write Linter & Remote Guardian Engine
     let debounceTimer;
     async function triggerRealtimeScan(document) {
         // Only scan Python or JSON files
@@ -208,6 +272,7 @@ async function activate(context) {
         if (!envInfo.isScannerInstalled) {
             return;
         }
+        // A. Real-Time In-Memory AST / File Scan
         try {
             const summary = await bridge.scanDocument(document);
             diagnostics.updateDiagnosticsForFile(document.uri, summary.findings);
@@ -217,9 +282,37 @@ async function activate(context) {
             statusBar.updateSummary(summary);
         }
         catch (e) {
-            console.error('Real-time scan error:', e);
+            console.error('Real-time file scan error:', e);
+        }
+        // B. Real-Time Remote Hugging Face Model Guardian
+        if (document.languageId === 'python') {
+            const detected = remoteDetector.detectModels(document);
+            codeLensProvider.refresh();
+            syncRemoteDiagnostics(document);
+            // Auto-scan any newly detected valid Hugging Face models in background
+            for (const item of detected) {
+                if (remoteDetector.isValidRepoId(item.modelId) && !remoteDetector.hasAudit(item.modelId)) {
+                    remoteDetector.auditModel(item.modelId, bridge)
+                        .then((remoteSummary) => {
+                        codeLensProvider.refresh();
+                        const activeEditor = vscode.window.activeTextEditor;
+                        if (activeEditor && activeEditor.document.uri.toString() === document.uri.toString()) {
+                            syncRemoteDiagnostics(activeEditor.document);
+                        }
+                        if (remoteSummary.findings.length > 0) {
+                            treeProvider.setSummary(remoteSummary);
+                            statusBar.updateSummary(remoteSummary);
+                        }
+                    })
+                        .catch((err) => {
+                        console.error(`Background remote audit failed for ${item.modelId}:`, err);
+                        codeLensProvider.refresh();
+                    });
+                }
+            }
         }
     }
+    // Watchers
     // A. As-You-Type (debounced 400ms after last keystroke)
     const changeDocWatcher = vscode.workspace.onDidChangeTextDocument((event) => {
         if (event.contentChanges.length === 0) {
@@ -251,10 +344,10 @@ async function activate(context) {
         triggerRealtimeScan(vscode.window.activeTextEditor.document);
     }
     // 4. Register Disposables
-    context.subscriptions.push(scanWorkspaceCmd, scanFileCmd, scanRemoteHubCmd, verifyFindingsCmd, showComplianceCmd, installScannerCmd, explainRuleCmd, codeActionsDisposable, changeDocWatcher, activeEditorWatcher, onSaveWatcher, openDocWatcher, diagnostics, statusBar);
+    context.subscriptions.push(scanWorkspaceCmd, scanFileCmd, scanRemoteHubCmd, auditRemoteInlineCmd, verifySpecificModelCmd, verifyFindingsCmd, showComplianceCmd, installScannerCmd, explainRuleCmd, codeLensDisposable, codeActionsDisposable, changeDocWatcher, activeEditorWatcher, onSaveWatcher, openDocWatcher, diagnostics, statusBar);
     // 5. Initial Workspace Scan if configured for 'onOpen'
-    const config = vscode.workspace.getConfiguration('llmSecurity');
-    if (config.get('triggerMode') === 'onOpen') {
+    const workspaceConfig = vscode.workspace.getConfiguration('llmSecurity');
+    if (workspaceConfig.get('triggerMode') === 'onOpen') {
         vscode.commands.executeCommand('llmSecurity.scanWorkspace');
     }
 }

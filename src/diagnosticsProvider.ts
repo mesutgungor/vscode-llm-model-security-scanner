@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { SecurityFinding, Severity } from './models';
+import { ModelScanSummary, SecurityFinding, Severity } from './models';
 
 export class DiagnosticsProvider {
   private diagnosticCollection: vscode.DiagnosticCollection;
@@ -51,6 +51,7 @@ export class DiagnosticsProvider {
 
   /**
    * Updates in-editor diagnostics for a single file in real-time as the user types.
+   * Preserves any remote model diagnostics present on the file.
    */
   public updateDiagnosticsForFile(
     targetUri: vscode.Uri,
@@ -76,8 +77,110 @@ export class DiagnosticsProvider {
       diagnostics.push(diagnostic);
     }
 
-    // Set diagnostics for this file (if array is empty, squiggles are removed)
-    this.diagnosticCollection.set(targetUri, diagnostics);
+    // Preserve remote hub diagnostics
+    const existing = this.diagnosticCollection.get(targetUri) || [];
+    const remoteDiagnostics = existing.filter(
+      (d) => d.source === 'llm-scan (Remote Hub)'
+    );
+
+    this.diagnosticCollection.set(targetUri, [...diagnostics, ...remoteDiagnostics]);
+  }
+
+  /**
+   * Updates remote model diagnostics on a document while preserving local file diagnostics.
+   */
+  public setRemoteModelDiagnostics(
+    targetUri: vscode.Uri,
+    items: { modelId: string; range: vscode.Range; summary: ModelScanSummary }[]
+  ): void {
+    const existing = this.diagnosticCollection.get(targetUri) || [];
+    const localDiagnostics = existing.filter(
+      (d) => d.source !== 'llm-scan (Remote Hub)'
+    );
+
+    const remoteDiagnostics: vscode.Diagnostic[] = [];
+    for (const item of items) {
+      if (item.summary.findings.length === 0) {
+        continue;
+      }
+
+      const highOrCrit = item.summary.findings.filter(
+        (f) => f.severity === Severity.CRITICAL || f.severity === Severity.HIGH
+      ).length;
+
+      const topFinding = item.summary.findings[0];
+      const message =
+        `[REMOTE-RISK] Hugging Face Model '${item.modelId}' flagged with ${item.summary.verdict} (${item.summary.riskScore}/100).\n` +
+        `Detected ${item.summary.findings.length} vulnerabilities (${highOrCrit} High/Critical).\n` +
+        `Primary threat: [${topFinding.ruleId}] ${topFinding.description}\n` +
+        `Remediation: ${topFinding.remediation || 'Inspect model architecture and configs before loading.'}`;
+
+      const severity =
+        item.summary.verdict === 'CRITICAL' || item.summary.verdict === 'HIGH_RISK'
+          ? vscode.DiagnosticSeverity.Error
+          : vscode.DiagnosticSeverity.Warning;
+
+      const diagnostic = new vscode.Diagnostic(item.range, message, severity);
+      diagnostic.code = {
+        value: topFinding.ruleId,
+        target: vscode.Uri.parse(
+          `https://github.com/mesutgungor/llm-model-security-scanner#${topFinding.ruleId.toLowerCase()}`
+        ),
+      };
+      diagnostic.source = 'llm-scan (Remote Hub)';
+      remoteDiagnostics.push(diagnostic);
+    }
+
+    this.diagnosticCollection.set(targetUri, [...localDiagnostics, ...remoteDiagnostics]);
+  }
+
+  /**
+   * Adds a high-visibility diagnostic directly on a remote Hugging Face model string literal.
+   */
+  public addRemoteModelDiagnostic(
+    targetUri: vscode.Uri,
+    modelId: string,
+    range: vscode.Range,
+    summary: ModelScanSummary
+  ): void {
+    if (summary.findings.length === 0) {
+      return;
+    }
+
+    const highOrCrit = summary.findings.filter(
+      (f) => f.severity === Severity.CRITICAL || f.severity === Severity.HIGH
+    ).length;
+
+    const topFinding = summary.findings[0];
+    const message =
+      `[REMOTE-RISK] Hugging Face Model '${modelId}' has ${summary.verdict} (${summary.riskScore}/100).\n` +
+      `Detected ${summary.findings.length} vulnerabilities (${highOrCrit} High/Critical).\n` +
+      `Primary threat: [${topFinding.ruleId}] ${topFinding.description}\n` +
+      `Remediation: ${topFinding.remediation || 'Inspect model architecture before loading.'}`;
+
+    const diagnostic = new vscode.Diagnostic(
+      range,
+      message,
+      summary.verdict === 'CRITICAL' || summary.verdict === 'HIGH_RISK'
+        ? vscode.DiagnosticSeverity.Error
+        : vscode.DiagnosticSeverity.Warning
+    );
+
+    diagnostic.code = {
+      value: topFinding.ruleId,
+      target: vscode.Uri.parse(
+        `https://github.com/mesutgungor/llm-model-security-scanner#${topFinding.ruleId.toLowerCase()}`
+      ),
+    };
+    diagnostic.source = 'llm-scan (Remote Hub)';
+
+    const existing = Array.from(this.diagnosticCollection.get(targetUri) || []);
+    // Avoid duplicate diagnostics on the same range
+    const filtered = existing.filter(
+      (d) => !(d.range.isEqual(range) && d.source === 'llm-scan (Remote Hub)')
+    );
+    filtered.push(diagnostic);
+    this.diagnosticCollection.set(targetUri, filtered);
   }
 
   public clear(): void {

