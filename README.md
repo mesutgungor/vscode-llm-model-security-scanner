@@ -1,6 +1,7 @@
 # 🛡️ LLM Model Security Scanner for Visual Studio Code
 
-[![Visual Studio Marketplace](https://img.shields.io/badge/Marketplace-v1.0.0-blue.svg?logo=visual-studio-code)](https://marketplace.visualstudio.com)
+[![GitHub Release](https://img.shields.io/github/v/release/mesutgungor/vscode-llm-model-security-scanner?logo=github)](https://github.com/mesutgungor/vscode-llm-model-security-scanner/releases/latest)
+[![Visual Studio Marketplace](https://img.shields.io/badge/Marketplace-v1.0.0-blue.svg?logo=visual-studio-code)](https://github.com/mesutgungor/vscode-llm-model-security-scanner/releases/latest)
 [![Publisher](https://img.shields.io/badge/Publisher-mg--ai-purple.svg)](https://github.com/mesutgungor)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-green.svg)](LICENSE)
 [![Compliance](https://img.shields.io/badge/Compliance-OWASP%20%7C%20MITRE%20ATLAS%20%7C%20NIST%20%7C%20EU%20AI%20Act-orange.svg)](https://github.com/mesutgungor/llm-model-security-scanner#-regulatory--security-framework-crosswalk)
@@ -166,16 +167,23 @@ Every rule in `llm-scan` is mapped to the four principal AI safety frameworks:
 
 ## 🚀 Installation & Setup
 
-### Method 1: From Visual Studio Marketplace
+### Method 1: Install from GitHub Release (.vsix) — Recommended
+1. Download **`llm-model-security-scanner-1.0.0.vsix`** from the **[Latest GitHub Release (v1.0.0)](https://github.com/mesutgungor/vscode-llm-model-security-scanner/releases/latest)**.
+2. Install via command line:
+   ```bash
+   code --install-extension llm-model-security-scanner-1.0.0.vsix
+   ```
+   Or inside Visual Studio Code:
+   - Open Extensions sidebar (**`Cmd + Shift + X`**).
+   - Click the **`...`** (Views and More Actions) menu at the top-right.
+   - Select **Install from VSIX...** and choose the downloaded file.
+
+### Method 2: From Visual Studio Marketplace (Pending Approval)
+Once public listing verification finishes on the Marketplace:
 1. Open VS Code.
 2. Press **`Cmd + Shift + X`** to open Extensions.
 3. Search for **`LLM Model Security Scanner`**.
 4. Click **Install**.
-
-### Method 2: Install from VSIX Bundle
-```bash
-code --install-extension llm-model-security-scanner-1.0.0.vsix
-```
 
 ---
 
