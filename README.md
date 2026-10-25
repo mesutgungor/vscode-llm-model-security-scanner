@@ -4,7 +4,7 @@
 [![Publisher](https://img.shields.io/badge/Publisher-mg--ai-purple.svg)](https://github.com/mesutgungor)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-green.svg)](LICENSE)
 [![Compliance](https://img.shields.io/badge/Compliance-OWASP%20%7C%20MITRE%20ATLAS%20%7C%20NIST%20%7C%20EU%20AI%20Act-orange.svg)](https://github.com/mesutgungor/llm-model-security-scanner#-regulatory--security-framework-crosswalk)
-[![SARIF v2.1.0](https://img.shields.io/badge/SARIF-v2.1.0-blueviolet.svg)](#-features)
+[![SARIF v2.1.0](https://img.shields.io/badge/SARIF-v2.1.0-blueviolet.svg)](#-key-features)
 
 > **Enterprise-grade, zero-execution static analysis, in-editor diagnostics, and cryptographic Proof-of-Finding verification for Large Language Models (LLMs) directly inside Visual Studio Code.**
 
@@ -13,7 +13,7 @@ Inspect model weights, configuration manifests, tokenizer dictionaries, chat tem
 ---
 
 <p align="center">
-  <img src="media/preview.png" alt="LLM Model Security Scanner in VS Code" width="950">
+  <img src="https://raw.githubusercontent.com/mesutgungor/vscode-llm-model-security-scanner/main/media/preview.png" alt="LLM Model Security Scanner in VS Code" width="950">
 </p>
 
 ---
