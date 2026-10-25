@@ -11,7 +11,7 @@ export class DiagnosticsProvider {
   }
 
   /**
-   * Updates in-editor diagnostics from an array of security findings.
+   * Updates in-editor diagnostics from an array of security findings across all files.
    */
   public updateDiagnostics(findings: SecurityFinding[]): void {
     this.diagnosticCollection.clear();
@@ -47,6 +47,37 @@ export class DiagnosticsProvider {
     for (const [fsPath, diagnostics] of fileMap.entries()) {
       this.diagnosticCollection.set(vscode.Uri.file(fsPath), diagnostics);
     }
+  }
+
+  /**
+   * Updates in-editor diagnostics for a single file in real-time as the user types.
+   */
+  public updateDiagnosticsForFile(
+    targetUri: vscode.Uri,
+    findings: SecurityFinding[]
+  ): void {
+    const diagnostics: vscode.Diagnostic[] = [];
+
+    for (const finding of findings) {
+      const line = Math.max(0, (finding.lineNumber || 1) - 1);
+      const range = new vscode.Range(line, 0, line, 100);
+
+      const severity = this.mapSeverity(finding.severity);
+      const message = this.formatDiagnosticMessage(finding);
+
+      const diagnostic = new vscode.Diagnostic(range, message, severity);
+      diagnostic.code = {
+        value: finding.ruleId,
+        target: vscode.Uri.parse(
+          `https://github.com/mesutgungor/llm-model-security-scanner#${finding.ruleId.toLowerCase()}`
+        ),
+      };
+      diagnostic.source = 'llm-scan';
+      diagnostics.push(diagnostic);
+    }
+
+    // Set diagnostics for this file (if array is empty, squiggles are removed)
+    this.diagnosticCollection.set(targetUri, diagnostics);
   }
 
   public clear(): void {

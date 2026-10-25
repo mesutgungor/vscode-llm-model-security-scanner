@@ -22,6 +22,40 @@ export class ScannerBridge {
   ) {}
 
   /**
+   * Scans an active in-memory text document in real-time as the user types.
+   * Automatically handles unsaved buffer edits without requiring a file save.
+   */
+  public async scanDocument(document: vscode.TextDocument): Promise<ModelScanSummary> {
+    const rawExt = path.extname(document.fileName);
+    const ext = rawExt || (document.languageId === 'python' ? '.py' : '.json');
+    const base = path.basename(document.fileName, rawExt);
+    const tempDir = os.tmpdir();
+    const tempFile = path.join(
+      tempDir,
+      `active_editor_${Date.now()}_${base}${ext}`
+    );
+
+    try {
+      // Write the current in-memory editor buffer to a temporary file
+      fs.writeFileSync(tempFile, document.getText(), 'utf-8');
+      const summary = await this.scanTarget(tempFile, { deep: false });
+
+      // Remap findings back to the actual document file path
+      for (const finding of summary.findings) {
+        finding.filePath = document.fileName;
+      }
+      summary.target = document.fileName;
+      return summary;
+    } finally {
+      if (fs.existsSync(tempFile)) {
+        try {
+          fs.unlinkSync(tempFile);
+        } catch {}
+      }
+    }
+  }
+
+  /**
    * Executes a model security scan on a target path or remote Hugging Face repository ID.
    */
   public async scanTarget(

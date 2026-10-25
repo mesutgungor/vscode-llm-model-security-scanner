@@ -187,34 +187,71 @@ async function activate(context) {
     ], new codeActionProvider_1.SecurityCodeActionProvider(), {
         providedCodeActionKinds: codeActionProvider_1.SecurityCodeActionProvider.providedCodeActionKinds,
     });
-    // 3. Register File Watchers for Smart / OnSave Scanning
-    const onSaveWatcher = vscode.workspace.onDidSaveTextDocument(async (doc) => {
+    // 3. Real-Time As-You-Write Linter & Scanner Engine
+    let debounceTimer;
+    async function triggerRealtimeScan(document) {
+        // Only scan Python or JSON files
+        if (document.languageId !== 'python' && document.languageId !== 'json') {
+            return;
+        }
+        // Only scan real file systems (ignore output panels, git diffs, etc.)
+        if (document.uri.scheme !== 'file') {
+            return;
+        }
         const config = vscode.workspace.getConfiguration('llmSecurity');
         const triggerMode = config.get('triggerMode', 'smart');
         if (triggerMode === 'manual') {
             return;
         }
-        const fileName = path.basename(doc.fileName);
-        const isModelManifest = fileName === 'config.json' ||
-            fileName === 'tokenizer.json' ||
-            fileName === 'generation_config.json' ||
-            fileName === 'chat_template.json' ||
-            fileName === 'adapter_config.json' ||
-            fileName.startsWith('modeling_');
-        if (triggerMode === 'smart' && !isModelManifest) {
+        // Verify scanner is installed in active environment
+        const envInfo = await pythonService.checkScannerInstalled();
+        if (!envInfo.isScannerInstalled) {
             return;
         }
-        // Auto-scan on manifest save
-        const envInfo = await pythonService.checkScannerInstalled();
-        if (envInfo.isScannerInstalled) {
-            const summary = await bridge.scanTarget(doc.fileName);
-            diagnostics.updateDiagnostics(summary.findings);
-            treeProvider.setSummary(summary);
+        try {
+            const summary = await bridge.scanDocument(document);
+            diagnostics.updateDiagnosticsForFile(document.uri, summary.findings);
+            if (summary.findings.length > 0) {
+                treeProvider.setSummary(summary);
+            }
             statusBar.updateSummary(summary);
         }
+        catch (e) {
+            console.error('Real-time scan error:', e);
+        }
+    }
+    // A. As-You-Type (debounced 400ms after last keystroke)
+    const changeDocWatcher = vscode.workspace.onDidChangeTextDocument((event) => {
+        if (event.contentChanges.length === 0) {
+            return;
+        }
+        if (debounceTimer) {
+            clearTimeout(debounceTimer);
+        }
+        debounceTimer = setTimeout(() => {
+            triggerRealtimeScan(event.document);
+        }, 400);
     });
+    // B. When switching active tabs or opening a file
+    const activeEditorWatcher = vscode.window.onDidChangeActiveTextEditor((editor) => {
+        if (editor && editor.document) {
+            triggerRealtimeScan(editor.document);
+        }
+    });
+    // C. When saving a file
+    const onSaveWatcher = vscode.workspace.onDidSaveTextDocument((doc) => {
+        triggerRealtimeScan(doc);
+    });
+    // D. When opening a file
+    const openDocWatcher = vscode.workspace.onDidOpenTextDocument((doc) => {
+        triggerRealtimeScan(doc);
+    });
+    // E. Scan currently open editor on activation immediately
+    if (vscode.window.activeTextEditor) {
+        triggerRealtimeScan(vscode.window.activeTextEditor.document);
+    }
     // 4. Register Disposables
-    context.subscriptions.push(scanWorkspaceCmd, scanFileCmd, scanRemoteHubCmd, verifyFindingsCmd, showComplianceCmd, installScannerCmd, explainRuleCmd, codeActionsDisposable, onSaveWatcher, diagnostics, statusBar);
+    context.subscriptions.push(scanWorkspaceCmd, scanFileCmd, scanRemoteHubCmd, verifyFindingsCmd, showComplianceCmd, installScannerCmd, explainRuleCmd, codeActionsDisposable, changeDocWatcher, activeEditorWatcher, onSaveWatcher, openDocWatcher, diagnostics, statusBar);
     // 5. Initial Workspace Scan if configured for 'onOpen'
     const config = vscode.workspace.getConfiguration('llmSecurity');
     if (config.get('triggerMode') === 'onOpen') {
